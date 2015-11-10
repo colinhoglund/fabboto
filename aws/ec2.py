@@ -77,7 +77,11 @@ def resize_instances(instances, instance_type, force=False, dry_run=False):
             # stop running instances (fingers crossed...)
             running_instances.stop()
 
-            # repeatedly loop through instances until all have been processed
+            """
+            repeatedly loop through instances until all pending_ids have been processed.
+            this allows instances to come up as they're ready, rather than waiting for
+            the previous item in running_instances
+            """
             while len(pending_ids) > 0:
                 for instance in running_instances:
                     try:
