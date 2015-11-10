@@ -1,5 +1,12 @@
 from aws import ec2
 
+def resize_dev():
+    """ resize all dev hosts """
+    instances = ec2.get_instances(tags={'environment':'dev'})
+    # dry_run: print out potential changes
+    # force: reboot running instances
+    ec2.resize_instances(instances, 'm3.large', dry_run=True, force=True)
+
 def print_instances(state=None, tags=None):
     """
     Print ec2 instances using ec2.get_instances().
