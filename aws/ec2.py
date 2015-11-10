@@ -35,7 +35,7 @@ def get_snapshots(owner_id, status=None, tags=None):
 def resize_instances(instances, instance_type, force=False, dry_run=False):
     """ Resize instances in ec2.instancesCollection
 
-        !!!!Use 'force=True' with caution, it potentially scripts at outage!!!!
+        WARNING: Use 'force=True' with caution, it potentially scripts at outage!
     """
     # create a list of instance ids to allow removal of instances from collection
     instance_ids = [ i.instance_id for i in list(instances) ]
