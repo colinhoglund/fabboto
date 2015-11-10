@@ -71,15 +71,15 @@ def resize_instances(instances, instance_type, force=False, dry_run=False):
         if dry_run:
             print 'DRYRUN: running instances to modify: {0}'.format(running_ids)
         else:
+            # create list of pending changes
             pending_ids = [ i.instance_id for i in list(running_instances) ]
-            print pending_ids
+
             # stop running instances (fingers crossed...)
             running_instances.stop()
 
-            # wait for instances to stop and modify instance_type
+            # repeatedly loop through instances until all have been processed
             while len(pending_ids) > 0:
                 for instance in running_instances:
-                    print len(pending_ids)
                     try:
                         instance.modify_attribute(Attribute='instanceType', Value=instance_type)
                         instance.start()
