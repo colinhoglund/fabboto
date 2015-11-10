@@ -8,7 +8,7 @@ def print_instances(state=None, tags=None):
     fabric passes all arguments as strings.
         tags=Key:Value-Key:Value-...
 
-        ex: fab get_instances:state=running,tags=Environment:mgmt-InVPC:True
+        ex: fab print_instances:state=running,tags=Environment:mgmt-InVPC:True
     """
     # setup tag dictionary
     tag_dict = {}
