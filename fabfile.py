@@ -1,4 +1,4 @@
-from fabboto.aws import ec2
+from aws import ec2
 
 def print_instances(state=None, tags=None):
     """
