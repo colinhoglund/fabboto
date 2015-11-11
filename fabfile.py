@@ -1,3 +1,4 @@
+""" fabfile.py """
 from aws import ec2
 
 def resize_dev():
@@ -7,24 +8,35 @@ def resize_dev():
     # force: reboot running instances
     ec2.resize_instances(instances, 'm3.large', dry_run=True, force=True)
 
-def print_instances(state=None, tags=None):
+def print_instances(state=None, tags=None, filters=None):
     """
     Print ec2 instances using ec2.get_instances().
 
-    tags parameter requires special formatting because
-    fabric passes all arguments as strings.
-        tags=Key:Value-Key:Value-...
+    tags/filters parameter requires special formatting because
+    fabric passes all arguments as strings. The 'quotes' are required
+    so that the pipe is not parsed by the shell.
+        tags='Key:Value|Key:Value|...'
 
-        ex: fab print_instances:state=running,tags=Environment:mgmt-InVPC:True
+    Example:
+    fab print_instances:tags='env:prod|InVPC:True',filters='instance-type:t2.micro|tenancy:default'
     """
-    # setup tag dictionary
-    tag_dict = {}
-    if tags:
-        for tag in tags.split('-'):
-            tag_arr = tag.split(':')
-            tag_dict[tag_arr[0]] = tag_arr[1]
+    def _create_dict(items):
+        """ builds a dict from command line arg """
+        item_dict = {}
+        for i in items.split('|'):
+            arr = i.split(':')
+            item_dict[arr[0]] = arr[1]
+        return item_dict
 
-    instances = ec2.get_instances(state=state, tags=tag_dict)
+    tag_dict = {}
+    filter_dict = {}
+    # setup filter dictionaries
+    if tags:
+        tag_dict = _create_dict(tags)
+    if filters:
+        filter_dict = _create_dict(filters)
+
+    instances = ec2.get_instances(state=state, tags=tag_dict, filters=filter_dict)
 
     # print all matching names and ids
     for i in instances:

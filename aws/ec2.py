@@ -2,12 +2,14 @@
 import boto3
 from botocore.exceptions import ClientError
 
-def get_instances(ids=[], state=None, tags=None):
+def get_instances(filters=None, ids=[], state=None, tags=None):
     """ Get ec2 instances based on filters. """
     ec2 = boto3.resource('ec2')
     ec2_filter = []
 
     # apply filters based on arguments
+    if filters:
+        _add_filters(filters, ec2_filter)
     if state:
         ec2_filter.append({'Name': 'instance-state-name', 'Values': [state]})
     if tags:
@@ -96,6 +98,10 @@ def resize_instances(instances, instance_type, force=False, dry_run=False):
         skipped_instances = instances.filter(InstanceIds=skipped_ids)
         for instance in skipped_instances:
             print '{0} skipped due to {1} state'.format(instance.instance_id, instance.state['Name'])
+
+def _add_filters(filters, ec2_filter):
+   for item in filters.iteritems():
+       ec2_filter.append({'Name': '{0}'.format(item[0]), 'Values': [item[1]]})
 
 def _add_tag_filters(tags, ec2_filter):
    for tag in tags.iteritems():
