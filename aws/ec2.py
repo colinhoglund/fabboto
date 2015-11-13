@@ -2,9 +2,10 @@
 import boto3
 from botocore.exceptions import ClientError
 
-def get_instances(filters=None, ids=[], state=None, tags=None):
+CONN = boto3.resource('ec2')
+
+def get_instances(filters=None, ids=None, state=None, tags=None):
     """ Get ec2 instances based on filters. """
-    ec2 = boto3.resource('ec2')
     ec2_filter = []
 
     # apply filters based on arguments
@@ -16,11 +17,13 @@ def get_instances(filters=None, ids=[], state=None, tags=None):
         _add_tag_filters(tags, ec2_filter)
 
     #return a collection of ec2 instances
-    return ec2.instances.filter(Filters=ec2_filter, InstanceIds=ids)
+    if ids:
+        return CONN.instances.filter(Filters=ec2_filter, InstanceIds=ids)
+    else:
+        return CONN.instances.filter(Filters=ec2_filter)
 
 def get_snapshots(owner_id, status=None, tags=None):
     """ Get ec2 snapshots based on filters """
-    ec2 = boto3.resource('ec2')
     ec2_filter = []
 
     # apply filters based on arguments
@@ -32,7 +35,7 @@ def get_snapshots(owner_id, status=None, tags=None):
         _add_tag_filters(tags, ec2_filter)
 
     #return a collection of ec2 snapshots
-    return ec2.snapshots.filter(Filters=ec2_filter)
+    return CONN.snapshots.filter(Filters=ec2_filter)
 
 def resize_instances(instances, instance_type, force=False, dry_run=False):
     """ Resize instances in ec2.instancesCollection
@@ -40,12 +43,12 @@ def resize_instances(instances, instance_type, force=False, dry_run=False):
         WARNING: Use 'force=True' with caution, it potentially scripts at outage!
     """
     # create a list of instance ids to allow removal of instances from collection
-    instance_ids = [ i.instance_id for i in list(instances) ]
+    instance_ids = [i.instance_id for i in list(instances)]
     running_ids = []
     skipped_ids = []
 
     for instance in instances:
-        # drop instances from collection that are already the specified instance_type 
+        # drop instances from collection that are already the specified instance_type
         if instance.instance_type == instance_type:
             instance_ids.remove(instance.instance_id)
         elif instance.state['Name'] != 'stopped':
@@ -62,7 +65,7 @@ def resize_instances(instances, instance_type, force=False, dry_run=False):
     if len(instance_ids) > 0:
         stopped_instances = instances.filter(InstanceIds=instance_ids)
         if dry_run:
-            print 'DRYRUN: stopped instances to modify: {0}'.format(instance_ids)
+            print 'DRYRUN: stopped instances to modify: {}'.format(instance_ids)
         else:
             for instance in stopped_instances:
                 instance.modify_attribute(Attribute='instanceType', Value=instance_type)
@@ -71,10 +74,10 @@ def resize_instances(instances, instance_type, force=False, dry_run=False):
     if force and len(running_ids) > 0:
         running_instances = instances.filter(InstanceIds=running_ids)
         if dry_run:
-            print 'DRYRUN: running instances to modify: {0}'.format(running_ids)
+            print 'DRYRUN: running instances to modify: {}'.format(running_ids)
         else:
             # create list of pending changes
-            pending_ids = [ i.instance_id for i in list(running_instances) ]
+            pending_ids = [i.instance_id for i in list(running_instances)]
 
             # stop running instances (fingers crossed...)
             running_instances.stop()
@@ -97,12 +100,14 @@ def resize_instances(instances, instance_type, force=False, dry_run=False):
     if len(skipped_ids) > 0:
         skipped_instances = instances.filter(InstanceIds=skipped_ids)
         for instance in skipped_instances:
-            print '{0} skipped due to {1} state'.format(instance.instance_id, instance.state['Name'])
+            print '{} skipped due to {} state'.format(instance.instance_id, instance.state['Name'])
 
 def _add_filters(filters, ec2_filter):
-   for item in filters.iteritems():
-       ec2_filter.append({'Name': '{0}'.format(item[0]), 'Values': [item[1]]})
+    """ Translates dictionary object into an ec2 filter """
+    for item in filters.iteritems():
+        ec2_filter.append({'Name': '{}'.format(item[0]), 'Values': [item[1]]})
 
 def _add_tag_filters(tags, ec2_filter):
-   for tag in tags.iteritems():
-       ec2_filter.append({'Name': 'tag:{0}'.format(tag[0]), 'Values': [tag[1]]})
+    """ Translates dictionary object of tags into an ec2 filter """
+    for tag in tags.iteritems():
+        ec2_filter.append({'Name': 'tag:{}'.format(tag[0]), 'Values': [tag[1]]})
