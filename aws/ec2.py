@@ -47,6 +47,11 @@ def resize_instances(instances, instance_type, force=False, dry_run=False):
     running_ids = []
     skipped_ids = []
 
+    # return False if instance type is not valid
+    # TODO: should this return something else or just exit?
+    if not _valid_ec2_instance_type(instance_type):
+        return False
+
     for instance in instances:
         # drop instances from collection that are already the specified instance_type
         if instance.instance_type == instance_type:
@@ -111,3 +116,14 @@ def _add_tag_filters(tags, ec2_filter):
     """ Translates dictionary object of tags into an ec2 filter """
     for tag in tags.iteritems():
         ec2_filter.append({'Name': 'tag:{}'.format(tag[0]), 'Values': [tag[1]]})
+
+def _valid_ec2_instance_type(instance_type):
+    """ verify that instance_type is valid """
+    try:
+        CONN.create_instances(DryRun=True, ImageId='ami-d05e75b8',
+                              MinCount=1, MaxCount=1, InstanceType=instance_type)
+        return True
+    except ClientError as ex:
+        if 'InvalidParameterValue' in ex.message:
+            return False
+        return True
