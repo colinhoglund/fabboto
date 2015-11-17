@@ -122,7 +122,6 @@ def _valid_ec2_instance_type(instance_type):
     try:
         CONN.create_instances(DryRun=True, ImageId='ami-d05e75b8',
                               MinCount=1, MaxCount=1, InstanceType=instance_type)
-        return True
     except ClientError as ex:
         if 'InvalidParameterValue' in ex.message:
             return False
