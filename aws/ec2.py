@@ -1,5 +1,6 @@
 """ Functions for interacting with EC2 """
 import boto3
+import exceptions
 from botocore.exceptions import ClientError
 
 CONN = boto3.resource('ec2')
@@ -50,7 +51,7 @@ def resize_instances(instances, instance_type, force=False, dry_run=False):
     # return False if instance type is not valid
     # TODO: should this return something else or just exit?
     if not _valid_ec2_instance_type(instance_type):
-        return False
+        raise exceptions.InvalidInstanceType('{} is not a valid instance type.'.format(instance_type))
 
     for instance in instances:
         # drop instances from collection that are already the specified instance_type
