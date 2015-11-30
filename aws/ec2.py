@@ -7,9 +7,9 @@ CONN = boto3.resource('ec2')
 
 def get_instances(filters=None, ids=None, state=None, tags=None):
     """ Get ec2 instances based on filters. """
-    ec2_filter = []
 
     # apply filters based on arguments
+    ec2_filter = []
     if filters:
         _add_filters(filters, ec2_filter)
     if state:
@@ -17,14 +17,19 @@ def get_instances(filters=None, ids=None, state=None, tags=None):
     if tags:
         _add_tag_filters(tags, ec2_filter)
 
-    #return a collection of ec2 instances
+    # build collection filter arguments
+    kwargs = {}
+    if ec2_filter:
+        kwargs['Filters'] = ec2_filter
     if ids:
-        return CONN.instances.filter(Filters=ec2_filter, InstanceIds=ids)
-    else:
-        return CONN.instances.filter(Filters=ec2_filter)
+        kwargs['InstanceIds'] = ids
+
+    #return a collection of ec2 instances
+    return CONN.instances.filter(**kwargs)
 
 def get_snapshots(owner_id, status=None, tags=None):
     """ Get ec2 snapshots based on filters """
+    #TODO: volume_ids, snapshot_ids arguments
     ec2_filter = []
 
     # apply filters based on arguments
@@ -50,7 +55,9 @@ def resize_instances(instances, instance_type, force=False, dry_run=False):
 
     # return False if instance type is not valid
     if not _valid_ec2_instance_type(instance_type):
-        raise exceptions.InvalidInstanceType('{} is not a valid instance type.'.format(instance_type))
+        raise exceptions.InvalidInstanceType(
+            '{} is not a valid instance type.'.format(instance_type)
+        )
 
     for instance in instances:
         # drop instances from collection that are already the specified instance_type
