@@ -1,4 +1,4 @@
-""" Functions for interacting with EC2 """
+""" Functions for interacting with RDS """
 import boto3
 #from aws import exceptions
 #from botocore.exceptions import ClientError
