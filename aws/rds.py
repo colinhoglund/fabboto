@@ -5,15 +5,19 @@ import boto3
 
 CONN = boto3.client('rds')
 
-def get_instances(instance_id=None):
+def get_instances(ids=None):
     """ Get rds instances. """
 
-    kwargs = {}
-    if instance_id:
-        kwargs['DBInstanceIdentifier'] = instance_id
+    # build JMESPath query
+    jmes_query = "? "
+    if ids:
+        for inst in ids:
+            jmes_query += "DBInstanceIdentifier == '{}' || ".format(inst)
+    # slice off the trailing OR ' || '
+    jmes_query = jmes_query[:-4]
 
-    iterator = CONN.get_paginator('describe_db_instances').paginate(**kwargs)
-    return list(iterator.search('DBInstances[?].DBInstanceIdentifier'))
+    iterator = CONN.get_paginator('describe_db_instances').paginate()
+    return list(iterator.search('DBInstances[{}].DBInstanceIdentifier'.format(jmes_query)))
 
 def get_snapshots(instance_ids=None, snapshot_ids=None, snapshot_type=None):
     """ Get rds snapshots """
@@ -26,7 +30,7 @@ def get_snapshots(instance_ids=None, snapshot_ids=None, snapshot_type=None):
     if snapshot_ids:
         for snap in snapshot_ids:
             jmes_query += "DBSnapshotIdentifier == '{}' || ".format(snap)
-   # slice off the trailing OR ' || '
+    # slice off the trailing OR ' || '
     jmes_query = jmes_query[:-4]
 
     # build pagination arguments
