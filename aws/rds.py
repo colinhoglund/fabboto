@@ -11,7 +11,7 @@ def get_instances(ids=None):
     Returns a list of RDS instances. Calling with no arguments returns all RDS instances.
 
     Args:
-        ids (list): a list of RDS instance identifiers
+        ids (Optional[list]): a list of RDS instance identifiers. Defaults to None
 
     Returns:
         list: a list of DBInstanceIdentifiers
