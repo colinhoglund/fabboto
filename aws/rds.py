@@ -9,6 +9,8 @@ def get_instances(ids=None):
     """ Get rds instances
 
     Returns a list of RDS instances. Calling with no arguments returns all RDS instances.
+    Since boto3 does not provide a service resource or collection object for RDS,
+    this function uses JMESPath queries for filtering.
 
     Args:
         ids (Optional[list]): a list of RDS instance identifiers. Defaults to None
@@ -17,7 +19,7 @@ def get_instances(ids=None):
         list: a list of DBInstanceIdentifiers
     """
 
-    # build JMESPath query
+    # build JMESPath query string
     jmes_query = "? "
     if ids:
         for inst in ids:
@@ -32,6 +34,8 @@ def get_snapshots(instance_ids=None, snapshot_ids=None, snapshot_type=None):
     """ Get rds snapshots
 
     Returns a list of RDS snapshots. Calling with no arguments returns all RDS snapshots.
+    Since boto3 does not provide a service resource or collection object for RDS,
+    this function uses JMESPath queries for filtering.
 
     Args:
         instance_ids (Optional[list]): a list of RDS instance identifiers. Defaults to None
@@ -42,7 +46,7 @@ def get_snapshots(instance_ids=None, snapshot_ids=None, snapshot_type=None):
         list: a list of DBSnapshotIdentifiers
     """
 
-    # build JMESPath query
+    # build JMESPath query string
     jmes_query = "? "
     if instance_ids:
         for inst in instance_ids:
