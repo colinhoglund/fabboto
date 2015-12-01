@@ -6,7 +6,16 @@ import boto3
 CONN = boto3.client('rds')
 
 def get_instances(ids=None):
-    """ Get rds instances. """
+    """ Get rds instances
+
+    Returns a list of RDS instances. Calling with no arguments returns all RDS instances.
+
+    Args:
+        ids (list): a list of RDS instance identifiers
+
+    Returns:
+        list: a list of DBInstanceIdentifiers
+    """
 
     # build JMESPath query
     jmes_query = "? "
@@ -20,7 +29,18 @@ def get_instances(ids=None):
     return list(iterator.search('DBInstances[{}].DBInstanceIdentifier'.format(jmes_query)))
 
 def get_snapshots(instance_ids=None, snapshot_ids=None, snapshot_type=None):
-    """ Get rds snapshots """
+    """ Get rds snapshots
+
+    Returns a list of RDS snapshots. Calling with no arguments returns all RDS snapshots.
+
+    Args:
+        instance_ids (Optional[list]): a list of RDS instance identifiers. Defaults to None
+        snapshot_ids (Optional[list]): a list of RDS snapshot identifiers. Defaults to None
+        snapshot_type (Optional[str]): type of snapshot (manual, automated). Defaults to None
+
+    Returns:
+        list: a list of DBSnapshotIdentifiers
+    """
 
     # build JMESPath query
     jmes_query = "? "
