@@ -5,7 +5,7 @@ import boto3
 
 CONN = boto3.client('rds')
 
-def get_instances(ids=None):
+def get_instances(ids=None, engine=None):
     """ Get rds instances
 
     Returns a list of RDS instances. Calling with no arguments returns all RDS instances.
@@ -20,14 +20,22 @@ def get_instances(ids=None):
     """
 
     # build JMESPath query string
-    jmes_query = "? "
-    if ids:
-        for inst in ids:
-            jmes_query += "DBInstanceIdentifier == '{}' || ".format(inst)
-    # slice off the trailing OR ' || '
-    jmes_query = jmes_query[:-4]
+    if ids or engine:
+        jmes_query = "?"
+        if ids:
+            jmes_query += "("
+            for inst in ids:
+                jmes_query += "DBInstanceIdentifier == '{}' || ".format(inst)
+            # slice off the trailing OR ' || '
+            jmes_query = jmes_query[:-4]
+            jmes_query += ")"
+        if engine:
+            if ids:
+                jmes_query += " && "
+            jmes_query += "Engine == '{}'".format(engine)
 
     iterator = CONN.get_paginator('describe_db_instances').paginate()
+    print jmes_query
     return list(iterator.search('DBInstances[{}].DBInstanceIdentifier'.format(jmes_query)))
 
 def get_snapshots(instance_ids=None, snapshot_ids=None, snapshot_type=None):
@@ -63,6 +71,7 @@ def get_snapshots(instance_ids=None, snapshot_ids=None, snapshot_type=None):
         kwargs['SnapshotType'] = snapshot_type
 
     iterator = CONN.get_paginator('describe_db_snapshots').paginate(**kwargs)
+    print jmes_query
     return list(iterator.search('DBSnapshots[{}].DBSnapshotIdentifier'.format(jmes_query)))
 
 #def resize_instances(instances, instance_type, force=False, dry_run=False):
