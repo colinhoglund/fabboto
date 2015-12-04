@@ -7,7 +7,7 @@ from aws import jmespath
 CONN = boto3.client('rds')
 
 def get_instances(ids=None, engines=None, classes=None):
-    """ Get rds instances
+    """ Get RDS instances
 
     Returns a list of RDS instances. Calling with no arguments returns all RDS instances.
     Since boto3 does not provide a service resource or collection object for RDS,
@@ -19,11 +19,11 @@ def get_instances(ids=None, engines=None, classes=None):
         classes (Optional[list]): list of DB instance types
 
     Returns:
-        list: a list of DBInstanceIdentifiers
+        list: a list of DBInstance dictionaries
     """
 
-    # build JMESPath query
-    jmes_query = jmespath.JMESPath()
+    # build JMESPath filter projection
+    jmes_query = jmespath.FilterProjection()
     if ids:
         jmes_query.add_aggregate('DBInstanceIdentifier', ids)
     if engines:
@@ -52,7 +52,7 @@ def get_snapshots(instance_ids=None, snapshot_ids=None, snapshot_type=None):
     """
 
     # build JMESPath query
-    jmes_query = jmespath.JMESPath()
+    jmes_query = jmespath.FilterProjection()
     if instance_ids:
         jmes_query.add_aggregate('DBInstanceIdentifier', instance_ids)
     if snapshot_ids:
@@ -65,7 +65,7 @@ def get_snapshots(instance_ids=None, snapshot_ids=None, snapshot_type=None):
 
     iterator = CONN.get_paginator('describe_db_snapshots').paginate(**kwargs)
     #print jmes_query
-    return list(iterator.search('DBSnapshots[{}].DBSnapshotIdentifier'.format(jmes_query)))
+    return list(iterator.search('DBSnapshots[{}]'.format(jmes_query)))
 
 #def resize_instances(instances, instance_type, force=False, dry_run=False):
 

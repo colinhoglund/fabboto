@@ -1,6 +1,6 @@
 """ Create JMESPath filter projections """
 
-class JMESPath(object):
+class FilterProjection(object):
     """ Create JMESPath filter projections """
 
     def __init__(self):
@@ -17,9 +17,9 @@ class JMESPath(object):
 
     def __str__(self):
         """ Output the JMESPath filter projection as a string """
-        query = "?"
+        query = ""
         if self.aggregates:
-            query += "("
+            query += "?("
             for key in self.aggregates.iterkeys():
                 for value in self.aggregates[key]:
                     query += "{} == '{}' || ".format(key, value)
@@ -29,6 +29,8 @@ class JMESPath(object):
         if self.filters:
             if self.aggregates:
                 query += " && "
+            else:
+                query += "?"
             for key in self.filters.iterkeys():
                 query += "("
                 for value in self.filters[key]:
