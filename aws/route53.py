@@ -17,7 +17,5 @@ def get_record_sets(zone, record_type=None):
     # use record paginator to return list of RecordSets
     rec_paginator = CONN.get_paginator('list_resource_record_sets').paginate(HostedZoneId=zone)
     if record_type:
-        rec_iter = rec_paginator.search("ResourceRecordSets[?Type == '{}']".format(record_type))
-    else:
-        rec_iter = rec_paginator.search('ResourceRecordSets')
-    return list(rec_iter)
+        return list(rec_paginator.search("ResourceRecordSets[?Type == '{}']".format(record_type)))
+    return list(rec_paginator.search('ResourceRecordSets'))
