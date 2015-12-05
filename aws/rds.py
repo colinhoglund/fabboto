@@ -23,17 +23,17 @@ def get_instances(ids=None, engines=None, classes=None):
     """
 
     # build JMESPath filter projection
-    jmes_query = jmespath.FilterProjection()
+    jmes_filter = jmespath.FilterProjection()
     if ids:
-        jmes_query.add_aggregate('DBInstanceIdentifier', ids)
+        jmes_filter.add_aggregate('DBInstanceIdentifier', ids)
     if engines:
-        jmes_query.add_filter('Engine', engines)
+        jmes_filter.add_filter('Engine', engines)
     if classes:
-        jmes_query.add_filter('DBInstanceClass', classes)
+        jmes_filter.add_filter('DBInstanceClass', classes)
 
     iterator = CONN.get_paginator('describe_db_instances').paginate()
-    #print jmes_query
-    return list(iterator.search('DBInstances[{}]'.format(jmes_query)))
+    #print jmes_filter
+    return list(iterator.search('DBInstances[{}]'.format(jmes_filter)))
 
 def get_snapshots(instance_ids=None, snapshot_ids=None, snapshot_type=None):
     """ Get rds snapshots
@@ -48,15 +48,15 @@ def get_snapshots(instance_ids=None, snapshot_ids=None, snapshot_type=None):
         snapshot_type (Optional[str]): type of snapshot (manual, automated). Defaults to None
 
     Returns:
-        list: a list of DBSnapshotIdentifiers
+        list: a list of DBSnapshots
     """
 
     # build JMESPath query
-    jmes_query = jmespath.FilterProjection()
+    jmes_filter = jmespath.FilterProjection()
     if instance_ids:
-        jmes_query.add_aggregate('DBInstanceIdentifier', instance_ids)
+        jmes_filter.add_aggregate('DBInstanceIdentifier', instance_ids)
     if snapshot_ids:
-        jmes_query.add_aggregate('DBSnapshotIdentifier', snapshot_ids)
+        jmes_filter.add_aggregate('DBSnapshotIdentifier', snapshot_ids)
 
     # build pagination arguments
     kwargs = {}
@@ -64,8 +64,8 @@ def get_snapshots(instance_ids=None, snapshot_ids=None, snapshot_type=None):
         kwargs['SnapshotType'] = snapshot_type
 
     iterator = CONN.get_paginator('describe_db_snapshots').paginate(**kwargs)
-    #print jmes_query
-    return list(iterator.search('DBSnapshots[{}]'.format(jmes_query)))
+    #print jmes_filter
+    return list(iterator.search('DBSnapshots[{}]'.format(jmes_filter)))
 
 #def resize_instances(instances, instance_type, force=False, dry_run=False):
 
