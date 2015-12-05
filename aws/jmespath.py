@@ -4,36 +4,36 @@ class FilterProjection(object):
     """ Create JMESPath filter projections """
 
     def __init__(self):
-        self.aggregates = {}
-        self.filters = {}
+        self._aggregates = {}
+        self._filters = {}
 
     def add_aggregate(self, key, values):
         """ add aggregates to JMESPath filter projection """
-        self.aggregates[key] = values
+        self._aggregates[key] = values
 
     def add_filter(self, key, values):
         """ add filters to JMESPath filter projection """
-        self.filters[key] = values
+        self._filters[key] = values
 
     def __str__(self):
         """ Output the JMESPath filter projection as a string """
         query = ""
-        if self.aggregates:
+        if self._aggregates:
             query += "?("
-            for key in self.aggregates.iterkeys():
-                for value in self.aggregates[key]:
+            for key in self._aggregates.iterkeys():
+                for value in self._aggregates[key]:
                     query += "{} == '{}' || ".format(key, value)
             # slice off the trailing OR ' || '
             query = query[:-4]
             query += ")"
-        if self.filters:
-            if self.aggregates:
+        if self._filters:
+            if self._aggregates:
                 query += " && "
             else:
                 query += "?"
-            for key in self.filters.iterkeys():
+            for key in self._filters.iterkeys():
                 query += "("
-                for value in self.filters[key]:
+                for value in self._filters[key]:
                     query += "{} == '{}' || ".format(key, value)
                 # slice off the trailing OR ' || '
                 query = query[:-4]
