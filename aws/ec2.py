@@ -1,7 +1,7 @@
 """ Functions for interacting with EC2 """
 import boto3
-from aws import exceptions
 from botocore.exceptions import ClientError
+from aws import exceptions
 
 CONN = boto3.resource('ec2')
 
