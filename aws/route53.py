@@ -1,5 +1,9 @@
 ''' Functions for interacting with AWS Route53 '''
+import socket
+import json
+import urllib2
 import boto3
+import ipaddress
 from aws import ec2, jmespath
 
 CONN = boto3.client('route53')
@@ -11,8 +15,7 @@ def get_zones(domains=None):
     jmes_filter = jmespath.FilterProjection()
     if domains:
         # convert string arg to list and normalize dns name with a .
-        domains = _str_to_list(domains)
-        domains = ['{}.'.format(x) if x[-1] != '.' else x for x in domains]
+        domains = _normalize_dnsname(_str_to_list(domains))
 
         jmes_filter.add_aggregate('Name', domains)
 
@@ -29,6 +32,7 @@ def get_records(names=None, domains=None, types=None):
 
     jmes_filter = jmespath.FilterProjection()
     if names:
+        names = _normalize_dnsname(_str_to_list(names))
         jmes_filter.add_aggregate('Name', names)
     if types:
         types = _str_to_list(types)
@@ -45,34 +49,56 @@ def get_records(names=None, domains=None, types=None):
         records += list(rec_iter.search("ResourceRecordSets[{}]".format(jmes_filter)))
     return records
 
-def get_unused_records(domains=None, types=None):
-    'returns all records currently unused by ec2 instances'
-    # this currently only checks running instances
-    #instances = ec2.get_instances()
+def get_unused_records():
+    '''returns all records currently unused by ec2 instances
+     this currently does not handle alias->alias records'''
+
+    # create list of all existing EC2 IPs
+    # stopped instances don't have IP addresses
     instances = ec2.get_instances(state='running')
-    ips = []
-    for instance in instances:
-        if instance.private_ip_address:
-            ips.append(instance.private_ip_address)
-        if instance.public_ip_address:
-            ips.append(instance.public_ip_address)
+    ips = [i.private_ip_address for i in instances]
+    ips += [i.public_ip_address for i in instances if i.public_ip_address]
+
+    # create list of all aws cidr ranges
+    amazon_json = json.loads(urllib2.urlopen(
+        'https://ip-ranges.amazonaws.com/ip-ranges.json').read())['prefixes']
+    networks = ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16']
+    networks += [net['ip_prefix'] for net in amazon_json]
+    # create list of IPv4Network objects
+    ranges = [ipaddress.ip_network(net.decode()) for net in networks]
 
     unused_records = []
-    # this needs to be refactored to do checks after the list of
-    # unused_records is complete. Likely in the following order
-    # A -> CNAME -> Alias -> CNAME again
-    for record in get_records(domains, types)['ResourceRecordSets']:
+    alias_records = []
+    # add records with unused IP addresses to unused_records
+    # add alias records to new list to be traversed later
+    for record in get_records():
         if record.has_key('ResourceRecords'):
             if record['Type'] == 'A':
-                if record['ResourceRecords'][0]['Value'] not in ips:
-                    unused_records.append(record['Name'])
+                ip_addr = record['ResourceRecords'][0]['Value']
+                ip_addr_obj = ipaddress.ip_address(ip_addr.decode())
+                if [ip_addr_obj for net in ranges if ip_addr_obj in net]:
+                    try:
+                        socket.gethostbyaddr(ip_addr)
+                    except socket.herror:
+                        unused_records.append(record)
+                elif ip_addr not in ips:
+                    unused_records.append(record)
             if record['Type'] == 'CNAME':
-                if record['ResourceRecords'][0]['Value'] in unused_records:
-                    unused_records.append(record['Name'])
-
+                alias_records.append(record)
         if record.has_key('AliasTarget'):
-            if record['AliasTarget']['DNSName'] in unused_records:
-                unused_records.append(record['Name'])
+            alias_records.append(record)
+
+    # search for alias records that point at unused records
+    unused_names = [rec['Name'] for rec in unused_records]
+    for record in alias_records:
+        if record.has_key('ResourceRecords'):
+            target = record['ResourceRecords'][0]['Value']
+            if target in unused_names:
+                unused_records.append(record)
+        if record.has_key('AliasTarget'):
+            target = record['AliasTarget']['DNSName']
+            if target in unused_names:
+                unused_records.append(record)
 
     return unused_records
 
@@ -99,3 +125,6 @@ def _str_to_list(obj):
     if isinstance(obj, str):
         return obj.split()
     return obj
+
+def _normalize_dnsname(items):
+    return ['{}.'.format(item) if item[-1] != '.' else item for item in items]
