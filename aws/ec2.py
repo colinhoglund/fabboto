@@ -1,26 +1,28 @@
-""" Functions for interacting with EC2 """
+''' Functions for interacting with EC2 '''
+
 import boto3
 from botocore.exceptions import ClientError
 from aws import exceptions
+from aws.utils import add_filters, add_tag_filters
 
 CONN = boto3.resource('ec2')
 
-def get_instances(filters=None, ids=None, state=None, tags=None):
-    """ Get ec2 instances based on filters. """
+def get_instances(ids=None, state=None, tags=None, filters=None):
+    ''' Get ec2 instances based on filters. '''
 
     # apply filters based on arguments
-    ec2_filter = []
-    if filters:
-        _add_filters(filters, ec2_filter)
+    filter_list = []
     if state:
-        ec2_filter.append({'Name': 'instance-state-name', 'Values': [state]})
+        filter_list.append({'Name': 'instance-state-name', 'Values': [state]})
     if tags:
-        _add_tag_filters(tags, ec2_filter)
+        add_tag_filters(tags, filter_list)
+    if filters:
+        add_filters(filters, filter_list)
 
     # build collection filter arguments
     kwargs = {}
-    if ec2_filter:
-        kwargs['Filters'] = ec2_filter
+    if filter_list:
+        kwargs['Filters'] = filter_list
     if ids:
         kwargs['InstanceIds'] = ids
 
@@ -28,26 +30,25 @@ def get_instances(filters=None, ids=None, state=None, tags=None):
     return CONN.instances.filter(**kwargs)
 
 def get_snapshots(owner_id, status=None, tags=None):
-    """ Get ec2 snapshots based on filters """
+    ''' Get ec2 snapshots based on filters '''
     #TODO: volume_ids, snapshot_ids arguments
-    ec2_filter = []
 
     # apply filters based on arguments
-    ec2_filter.append({'Name': 'owner-id', 'Values': [owner_id]})
-
+    filter_list = []
+    filter_list.append({'Name': 'owner-id', 'Values': [owner_id]})
     if status:
-        ec2_filter.append({'Name': 'status', 'Values': [status]})
+        filter_list.append({'Name': 'status', 'Values': [status]})
     if tags:
-        _add_tag_filters(tags, ec2_filter)
+        add_tag_filters(tags, filter_list)
 
     #return a collection of ec2 snapshots
-    return CONN.snapshots.filter(Filters=ec2_filter)
+    return CONN.snapshots.filter(Filters=filter_list)
 
 def resize_instances(instances, instance_type, force=False, dry_run=False):
-    """ Resize instances in ec2.instancesCollection
+    ''' Resize instances in ec2.instancesCollection
 
         WARNING: Use 'force=True' with caution, it potentially scripts at outage!
-    """
+    '''
     # create a list of instance ids to allow removal of instances from collection
     instance_ids = [i.instance_id for i in list(instances)]
     running_ids = []
@@ -94,11 +95,11 @@ def resize_instances(instances, instance_type, force=False, dry_run=False):
             # stop running instances (fingers crossed...)
             running_instances.stop()
 
-            """
+            '''
             repeatedly loop through instances until all pending_ids have been processed.
             this allows instances to come up as they're ready, rather than waiting for
             the previous item in running_instances
-            """
+            '''
             while len(pending_ids) > 0:
                 for instance in running_instances:
                     try:
@@ -114,18 +115,8 @@ def resize_instances(instances, instance_type, force=False, dry_run=False):
         for instance in skipped_instances:
             print '{} skipped due to {} state'.format(instance.instance_id, instance.state['Name'])
 
-def _add_filters(filters, ec2_filter):
-    """ Translates dictionary object into an ec2 filter """
-    for item in filters.iteritems():
-        ec2_filter.append({'Name': '{}'.format(item[0]), 'Values': [item[1]]})
-
-def _add_tag_filters(tags, ec2_filter):
-    """ Translates dictionary object of tags into an ec2 filter """
-    for tag in tags.iteritems():
-        ec2_filter.append({'Name': 'tag:{}'.format(tag[0]), 'Values': [tag[1]]})
-
 def _valid_ec2_instance_type(instance_type):
-    """ verify that instance_type is valid """
+    ''' verify that instance_type is valid '''
     try:
         CONN.create_instances(DryRun=True, ImageId='ami-d05e75b8',
                               MinCount=1, MaxCount=1, InstanceType=instance_type)

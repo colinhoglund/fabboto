@@ -1,41 +1,39 @@
 ''' Functions for interacting with AWS Route53 '''
+
 import socket
 import json
 import urllib2
 import boto3
 import ipaddress
-from aws import ec2, jmespath
+from aws import ec2
+from aws.utils import FilterProjection, str_to_list
 
 CONN = boto3.client('route53')
 
 def get_zones(domains=None):
-    'return hosted zones'
+    '''return hosted zones'''
 
     # get zones for specified domains
-    jmes_filter = jmespath.FilterProjection()
+    jmes_filter = FilterProjection()
     if domains:
-        # convert string arg to list and normalize dns name with a .
-        domains = _normalize_dnsname(_str_to_list(domains))
-
-        jmes_filter.add_aggregate('Name', domains)
+        # normalize dns name with a .
+        jmes_filter.add_aggregate('Name', _normalize_dnsnames(domains))
 
     # use zone paginator to gather all zones
     zone_iter = CONN.get_paginator('list_hosted_zones').paginate()
     return list(zone_iter.search("HostedZones[{}]".format(jmes_filter)))
 
 def get_zone_ids(domains=None):
-    'return a dict of {domain: zone_id}'
+    '''return a dict of {domain: zone_id}'''
     return [zone['Id'] for zone in get_zones(domains)]
 
 def get_records(names=None, domains=None, types=None):
-    'return records'
+    '''return records'''
 
-    jmes_filter = jmespath.FilterProjection()
+    jmes_filter = FilterProjection()
     if names:
-        names = _normalize_dnsname(_str_to_list(names))
-        jmes_filter.add_aggregate('Name', names)
+        jmes_filter.add_aggregate('Name', _normalize_dnsnames(names))
     if types:
-        types = _str_to_list(types)
         jmes_filter.add_filter('Type', types)
 
     # get a list of zone ids based on value of domains
@@ -103,14 +101,14 @@ def get_unused_records():
     return unused_records
 
 def delete_records(names):
-    'create hosted zone'
+    '''create hosted zone'''
 
-    names = _str_to_list(names)
+    names = str_to_list(names)
 
     # build dictionary of records using zone_id as the key
     records = {}
     for name in names:
-        domain = '.'.join(name.split('.')[-2:])
+        domain = '.'.join(_normalize_dnsnames(name).split('.')[-3:])
         if not records.has_key(domain):
             records[domain] = []
         records[domain].append(name)
@@ -121,10 +119,10 @@ def delete_records(names):
 
     return None
 
-def _str_to_list(obj):
-    if isinstance(obj, str):
-        return obj.split()
-    return obj
-
-def _normalize_dnsname(items):
+def _normalize_dnsnames(items):
+    ''' add . to list of DNS names '''
+    if isinstance(items, str):
+        if items[-1] != '.':
+            return '{}.'.format(items)
+        return items
     return ['{}.'.format(item) if item[-1] != '.' else item for item in items]

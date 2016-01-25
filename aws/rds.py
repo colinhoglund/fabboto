@@ -1,13 +1,11 @@
-""" Functions for interacting with RDS """
+''' Functions for interacting with RDS '''
 import boto3
-from aws import jmespath
-#from aws import exceptions
-#from botocore.exceptions import ClientError
+from aws.utils import FilterProjection
 
 CONN = boto3.client('rds')
 
 def get_instances(ids=None, engines=None, classes=None):
-    """ Get RDS instances
+    ''' Get RDS instances
 
     Returns a list of RDS instances. Calling with no arguments returns all RDS instances.
     Since boto3 does not provide a service resource or collection object for RDS,
@@ -20,10 +18,10 @@ def get_instances(ids=None, engines=None, classes=None):
 
     Returns:
         list: a list of DBInstance dictionaries
-    """
+    '''
 
     # build JMESPath filter projection
-    jmes_filter = jmespath.FilterProjection()
+    jmes_filter = FilterProjection()
     if ids:
         jmes_filter.add_aggregate('DBInstanceIdentifier', ids)
     if engines:
@@ -32,11 +30,10 @@ def get_instances(ids=None, engines=None, classes=None):
         jmes_filter.add_filter('DBInstanceClass', classes)
 
     iterator = CONN.get_paginator('describe_db_instances').paginate()
-    #print jmes_filter
     return list(iterator.search('DBInstances[{}]'.format(jmes_filter)))
 
 def get_snapshots(instance_ids=None, snapshot_ids=None, snapshot_type=None):
-    """ Get rds snapshots
+    ''' Get rds snapshots
 
     Returns a list of RDS snapshots. Calling with no arguments returns all RDS snapshots.
     Since boto3 does not provide a service resource or collection object for RDS,
@@ -49,10 +46,10 @@ def get_snapshots(instance_ids=None, snapshot_ids=None, snapshot_type=None):
 
     Returns:
         list: a list of DBSnapshots
-    """
+    '''
 
     # build JMESPath query
-    jmes_filter = jmespath.FilterProjection()
+    jmes_filter = FilterProjection()
     if instance_ids:
         jmes_filter.add_aggregate('DBInstanceIdentifier', instance_ids)
     if snapshot_ids:
@@ -64,17 +61,7 @@ def get_snapshots(instance_ids=None, snapshot_ids=None, snapshot_type=None):
         kwargs['SnapshotType'] = snapshot_type
 
     iterator = CONN.get_paginator('describe_db_snapshots').paginate(**kwargs)
-    #print jmes_filter
     return list(iterator.search('DBSnapshots[{}]'.format(jmes_filter)))
 
 #def resize_instances(instances, instance_type, force=False, dry_run=False):
-
 #def _valid_rds_instance_type(instance_type):
-#    """ verify that instance_type is valid """
-#    try:
-#        CONN.create_instances(DryRun=True, ImageId='ami-d05e75b8',
-#                              MinCount=1, MaxCount=1, InstanceType=instance_type)
-#    except ClientError as ex:
-#        if 'InvalidParameterValue' in ex.message:
-#            return False
-#        return True
