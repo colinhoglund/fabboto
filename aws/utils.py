@@ -9,11 +9,13 @@ class FilterProjection(object):
 
     def add_aggregate(self, key, values):
         ''' add aggregates to JMESPath filter projection '''
+        # accept str or list
         values = str_to_list(values)
         self._aggregates[key] = values
 
     def add_filter(self, key, values):
         ''' add filters to JMESPath filter projection '''
+        # accept str or list
         values = str_to_list(values)
         self._filters[key] = values
 
