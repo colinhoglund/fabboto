@@ -2,8 +2,7 @@
 
 import boto3
 from botocore.exceptions import ClientError
-from aws import exceptions
-from aws.utils import add_filters, add_tag_filters
+from aws import exceptions, utils
 
 CONN = boto3.resource('ec2')
 
@@ -15,9 +14,9 @@ def get_instances(ids=None, state=None, tags=None, filters=None):
     if state:
         filter_list.append({'Name': 'instance-state-name', 'Values': [state]})
     if tags:
-        add_tag_filters(tags, filter_list)
+        utils.add_tag_filters(tags, filter_list)
     if filters:
-        add_filters(filters, filter_list)
+        utils.add_filters(filters, filter_list)
 
     # build collection filter arguments
     kwargs = {}
@@ -39,7 +38,7 @@ def get_snapshots(owner_id, status=None, tags=None):
     if status:
         filter_list.append({'Name': 'status', 'Values': [status]})
     if tags:
-        add_tag_filters(tags, filter_list)
+        utils.add_tag_filters(tags, filter_list)
 
     #return a collection of ec2 snapshots
     return CONN.snapshots.filter(Filters=filter_list)

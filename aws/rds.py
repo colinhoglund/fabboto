@@ -1,6 +1,6 @@
 ''' Functions for interacting with RDS '''
 import boto3
-from aws.utils import FilterProjection
+from aws import utils
 
 CONN = boto3.client('rds')
 
@@ -21,7 +21,7 @@ def get_instances(ids=None, engines=None, classes=None):
     '''
 
     # build JMESPath filter projection
-    jmes_filter = FilterProjection()
+    jmes_filter = utils.FilterProjection()
     if ids:
         jmes_filter.add_aggregate('DBInstanceIdentifier', ids)
     if engines:
@@ -49,7 +49,7 @@ def get_snapshots(instance_ids=None, snapshot_ids=None, snapshot_type=None):
     '''
 
     # build JMESPath query
-    jmes_filter = FilterProjection()
+    jmes_filter = utils.FilterProjection()
     if instance_ids:
         jmes_filter.add_aggregate('DBInstanceIdentifier', instance_ids)
     if snapshot_ids:

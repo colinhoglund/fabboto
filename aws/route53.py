@@ -5,8 +5,7 @@ import json
 import urllib2
 import boto3
 import ipaddress
-from aws import ec2
-from aws.utils import FilterProjection, str_to_list
+from aws import ec2, utils
 
 CONN = boto3.client('route53')
 
@@ -14,7 +13,7 @@ def get_zones(domains=None):
     '''return hosted zones'''
 
     # get zones for specified domains
-    jmes_filter = FilterProjection()
+    jmes_filter = utils.FilterProjection()
     if domains:
         # normalize dns name with a .
         jmes_filter.add_aggregate('Name', _normalize_dnsnames(domains))
@@ -30,7 +29,7 @@ def get_zone_ids(domains=None):
 def get_records(names=None, domains=None, types=None):
     '''return records'''
 
-    jmes_filter = FilterProjection()
+    jmes_filter = utils.FilterProjection()
     if names:
         jmes_filter.add_aggregate('Name', _normalize_dnsnames(names))
     if types:
@@ -103,7 +102,7 @@ def get_unused_records():
 def delete_records(names):
     '''create hosted zone'''
 
-    names = str_to_list(names)
+    names = utils.str_to_list(names)
 
     # build dictionary of records using zone_id as the key
     records = {}
