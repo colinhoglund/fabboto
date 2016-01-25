@@ -12,7 +12,7 @@ def get_instances(ids=None, state=None, tags=None, filters=None):
     # apply filters based on arguments
     filter_list = []
     if state:
-        filter_list.append({'Name': 'instance-state-name', 'Values': [state]})
+        filter_list.append({'Name': 'instance-state-name', 'Values': utils.str_to_list(state)})
     if tags:
         utils.add_tag_filters(tags, filter_list)
     if filters:
@@ -23,25 +23,32 @@ def get_instances(ids=None, state=None, tags=None, filters=None):
     if filter_list:
         kwargs['Filters'] = filter_list
     if ids:
-        kwargs['InstanceIds'] = ids
+        kwargs['InstanceIds'] = utils.str_to_list(ids)
 
     #return a collection of ec2 instances
     return CONN.instances.filter(**kwargs)
 
-def get_snapshots(owner_id, status=None, tags=None):
+def get_snapshots(owner_id, snapshot_ids=None, volume_ids=None, status=None, tags=None):
     ''' Get ec2 snapshots based on filters '''
-    #TODO: volume_ids, snapshot_ids arguments
 
     # apply filters based on arguments
     filter_list = []
-    filter_list.append({'Name': 'owner-id', 'Values': [owner_id]})
+    filter_list.append({'Name': 'owner-id', 'Values': utils.str_to_list(owner_id)})
+    if volume_ids:
+        filter_list.append({'Name': 'volume-id', 'Values': utils.str_to_list(volume_ids)})
     if status:
-        filter_list.append({'Name': 'status', 'Values': [status]})
+        filter_list.append({'Name': 'status', 'Values': utils.str_to_list(status)})
     if tags:
         utils.add_tag_filters(tags, filter_list)
 
+    kwargs = {}
+    if filter_list:
+        kwargs['Filters'] = filter_list
+    if snapshot_ids:
+        kwargs['SnapshotIds'] = utils.str_to_list(snapshot_ids)
+
     #return a collection of ec2 snapshots
-    return CONN.snapshots.filter(Filters=filter_list)
+    return CONN.snapshots.filter(**kwargs)
 
 def resize_instances(instances, instance_type, force=False, dry_run=False):
     ''' Resize instances in ec2.instancesCollection
