@@ -49,13 +49,11 @@ class FilterProjection(object):
 
 def add_filters(filters, filter_list):
     ''' Translates dictionary object into an collection filter '''
-    filters = str_to_list(filters)
     for item in filters.iteritems():
         filter_list.append({'Name': '{}'.format(item[0]), 'Values': [item[1]]})
 
 def add_tag_filters(tags, filter_list):
     ''' Translates dictionary object of tags into an collection filter '''
-    tags = str_to_list(tags)
     for tag in tags.iteritems():
         filter_list.append({'Name': 'tag:{}'.format(tag[0]), 'Values': [tag[1]]})
 
