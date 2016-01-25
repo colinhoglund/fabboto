@@ -1,6 +1,5 @@
 ''' Functions for interacting with AWS Route53 '''
 
-import socket
 import json
 import urllib2
 import boto3
@@ -53,39 +52,36 @@ def get_unused_records():
     # create list of all existing EC2 IPs
     # stopped instances don't have IP addresses
     instances = ec2.get_instances(state='running')
-    ips = [i.private_ip_address for i in instances]
-    ips += [i.public_ip_address for i in instances if i.public_ip_address]
+    running_ips = [i.private_ip_address for i in instances]
+    running_ips += [i.public_ip_address for i in instances if i.public_ip_address]
 
-    # create list of all aws cidr ranges
+    # create list of IPv4Network objects containing AWS cidr ranges
     amazon_json = json.loads(urllib2.urlopen(
         'https://ip-ranges.amazonaws.com/ip-ranges.json').read())['prefixes']
     networks = ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16']
     networks += [net['ip_prefix'] for net in amazon_json]
-    # create list of IPv4Network objects
     ranges = [ipaddress.ip_network(net.decode()) for net in networks]
 
+    # add 'A' records with unused IP addresses to unused_records
+    # add alias records to new list to be traversed next
     unused_records = []
     alias_records = []
-    # add records with unused IP addresses to unused_records
-    # add alias records to new list to be traversed later
     for record in get_records():
         if record.has_key('ResourceRecords'):
             if record['Type'] == 'A':
                 ip_addr = record['ResourceRecords'][0]['Value']
                 ip_addr_obj = ipaddress.ip_address(ip_addr.decode())
-                if [ip_addr_obj for net in ranges if ip_addr_obj in net]:
-                    try:
-                        socket.gethostbyaddr(ip_addr)
-                    except socket.herror:
-                        unused_records.append(record)
-                elif ip_addr not in ips:
+
+                # only add records to unused list if IP is not used by a
+                # running instance and IP is in an AWS address range
+                if ip_addr not in running_ips and True in [ip_addr_obj in net for net in ranges]:
                     unused_records.append(record)
             if record['Type'] == 'CNAME':
                 alias_records.append(record)
         if record.has_key('AliasTarget'):
             alias_records.append(record)
 
-    # search for alias records that point at unused records
+    # search for alias records that point at unused A records
     unused_names = [rec['Name'] for rec in unused_records]
     for record in alias_records:
         if record.has_key('ResourceRecords'):
@@ -99,8 +95,12 @@ def get_unused_records():
 
     return unused_records
 
+def create_records():
+    '''create records'''
+    return None
+
 def delete_records(names):
-    '''create hosted zone'''
+    '''delete records'''
 
     names = utils.str_to_list(names)
 
