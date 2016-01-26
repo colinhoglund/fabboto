@@ -20,10 +20,6 @@ def get_zones(domains=None):
     zone_iter = CONN.get_paginator('list_hosted_zones').paginate()
     return list(zone_iter.search("HostedZones[{}]".format(jmes_filter)))
 
-def get_zone_ids(domains=None):
-    '''return a list of zone_ids'''
-    return [zone['Id'] for zone in get_zones(domains)]
-
 def get_records(names=None, domains=None, types=None):
     '''return records'''
 
@@ -35,7 +31,7 @@ def get_records(names=None, domains=None, types=None):
         jmes_filter.add_filter('Type', types)
 
     # get a list of zone ids based on value of domains
-    zone_ids = get_zone_ids(domains)
+    zone_ids = [zone['Id'] for zone in get_zones(domains)]
 
     # loop through zone_ids to gather records
     records = []
@@ -89,28 +85,38 @@ def get_unused_records():
 
     return unused_records
 
-def create_records():
-    '''create records'''
-    return None
+def create_record(name, value, record_type='A'):
+    '''create DNS record'''
+
+    zone_id = get_zones('.'.join(_normalize_dnsnames(name).split('.')[-3:]))[0]['Id']
+
+    CONN.change_resource_record_sets(
+        HostedZoneId=zone_id,
+        ChangeBatch={'Changes': [{
+            'Action': 'CREATE',
+            'ResourceRecordSet': {
+                'Name': name,
+                'Type': record_type,
+                'TTL': 300,
+                'ResourceRecords': [{
+                    'Value': value
+                }]
+            }
+        }]}
+    )
+    return True
 
 def delete_records(names):
     '''delete records'''
 
-    names = utils.str_to_list(names)
-
-    # build dictionary of records using zone_id as the key
-    records = {}
-    for name in names:
-        domain = '.'.join(_normalize_dnsnames(name).split('.')[-3:])
-        if not records.has_key(domain):
-            records[domain] = []
-        records[domain].append(name)
+    records = _build_change_dict(names)
 
     for domain in records.items():
-        print domain
-        print get_records(names=domain[1])
-
-    return None
+        changes = [{'Action': 'DELETE', 'ResourceRecordSet': rec} for rec in get_records(domain[1])]
+        CONN.change_resource_record_sets(
+            HostedZoneId=domain[0],
+            ChangeBatch={'Changes': changes})
+    return True
 
 def _normalize_dnsnames(items):
     ''' add . to DNS names '''
@@ -119,3 +125,13 @@ def _normalize_dnsnames(items):
             return '{}.'.format(items)
         return items
     return ['{}.'.format(item) if item[-1] != '.' else item for item in items]
+
+def _build_change_dict(names):
+    # build dictionary of records using zone_id as the key
+    records = {}
+    for name in utils.str_to_list(names):
+        zone_id = get_zones('.'.join(_normalize_dnsnames(name).split('.')[-3:]))[0]['Id']
+        if not records.has_key(zone_id):
+            records[zone_id] = []
+        records[zone_id].append(name)
+    return records
