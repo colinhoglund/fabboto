@@ -45,8 +45,7 @@ def get_unused_records():
     '''returns all records currently unused by ec2 instances
      this currently does not handle alias->alias records'''
 
-    # create list of all existing EC2 IPs
-    # stopped instances don't have IP addresses
+    # create list of all existing EC2 IPs stopped instances don't have IP addresses
     instances = ec2.get_instances(state='running')
     running_ips = [i.private_ip_address for i in instances]
     running_ips += [i.public_ip_address for i in instances if i.public_ip_address]
