@@ -11,10 +11,9 @@ CONN = boto3.client('route53')
 def get_zones(domains=None):
     '''return hosted zones'''
 
-    # get zones for specified domains
+    # build JMESPath filter projection
     jmes_filter = utils.FilterProjection()
     if domains:
-        # normalize dns name with a .
         jmes_filter.add_aggregate('Name', _normalize_dnsnames(domains))
 
     # use zone paginator to gather all zones
@@ -22,12 +21,13 @@ def get_zones(domains=None):
     return list(zone_iter.search("HostedZones[{}]".format(jmes_filter)))
 
 def get_zone_ids(domains=None):
-    '''return a dict of {domain: zone_id}'''
+    '''return a list of zone_ids'''
     return [zone['Id'] for zone in get_zones(domains)]
 
 def get_records(names=None, domains=None, types=None):
     '''return records'''
 
+    # build JMESPath filter projection
     jmes_filter = utils.FilterProjection()
     if names:
         jmes_filter.add_aggregate('Name', _normalize_dnsnames(names))
@@ -67,31 +67,25 @@ def get_unused_records():
     unused_records = []
     alias_records = []
     for record in get_records():
-        if record.has_key('ResourceRecords'):
-            if record['Type'] == 'A':
-                ip_addr = record['ResourceRecords'][0]['Value']
-                ip_addr_obj = ipaddress.ip_address(ip_addr.decode())
+        if record['Type'] == 'A' and record.has_key('ResourceRecords'):
+            ip_addr = record['ResourceRecords'][0]['Value']
 
-                # only add records to unused list if IP is not used by a
-                # running instance and IP is in an AWS address range
-                if ip_addr not in running_ips and True in [ip_addr_obj in net for net in ranges]:
-                    unused_records.append(record)
-            if record['Type'] == 'CNAME':
-                alias_records.append(record)
-        if record.has_key('AliasTarget'):
+            # only add to unused_records if IP is not used by a
+            # running instance and IP is in an AWS address range
+            if (ip_addr not in running_ips
+                    and True in [ipaddress.ip_address(ip_addr.decode()) in net for net in ranges]):
+                unused_records.append(record)
+        elif record['Type'] == 'CNAME' or record.has_key('AliasTarget'):
             alias_records.append(record)
 
     # search for alias records that point at unused A records
     unused_names = [rec['Name'] for rec in unused_records]
     for record in alias_records:
-        if record.has_key('ResourceRecords'):
-            target = record['ResourceRecords'][0]['Value']
-            if target in unused_names:
-                unused_records.append(record)
-        if record.has_key('AliasTarget'):
-            target = record['AliasTarget']['DNSName']
-            if target in unused_names:
-                unused_records.append(record)
+        if (record.has_key('ResourceRecords')
+                and record['ResourceRecords'][0]['Value'] in unused_names):
+            unused_records.append(record)
+        elif record.has_key('AliasTarget') and record['AliasTarget']['DNSName'] in unused_names:
+            unused_records.append(record)
 
     return unused_records
 
@@ -119,7 +113,7 @@ def delete_records(names):
     return None
 
 def _normalize_dnsnames(items):
-    ''' add . to list of DNS names '''
+    ''' add . to DNS names '''
     if isinstance(items, str):
         if items[-1] != '.':
             return '{}.'.format(items)
