@@ -9,24 +9,28 @@ from aws import ec2, utils
 CONN = boto3.client('route53')
 
 def get_zones(domains=None):
-    '''return hosted zones'''
+    '''return hosted zones generator'''
 
     # build JMESPath filter projection
     jmes_filter = utils.FilterProjection()
     if domains:
-        jmes_filter.add_aggregate('Name', _normalize_dnsnames(domains))
+        jmes_filter.add_aggregate('Name', normalize_dnsnames(domains))
 
     # use zone paginator to gather all zones
     zone_iter = CONN.get_paginator('list_hosted_zones').paginate()
-    return list(zone_iter.search("HostedZones[{}]".format(jmes_filter)))
+    return zone_iter.search("HostedZones[{}]".format(jmes_filter))
+
+def get_zone_id_from_fqdn(fqdn):
+    '''strip domain and get hosted zone id'''
+    return get_zones('.'.join(normalize_dnsnames(fqdn).split('.')[-3:])).next()['Id']
 
 def get_records(names=None, domains=None, types=None):
-    '''return records'''
+    '''return records generator'''
 
     # build JMESPath filter projection
     jmes_filter = utils.FilterProjection()
     if names:
-        jmes_filter.add_aggregate('Name', _normalize_dnsnames(names))
+        jmes_filter.add_aggregate('Name', normalize_dnsnames(names))
     if types:
         jmes_filter.add_filter('Type', types)
 
@@ -34,12 +38,14 @@ def get_records(names=None, domains=None, types=None):
     zone_ids = [zone['Id'] for zone in get_zones(domains)]
 
     # loop through zone_ids to gather records
-    records = []
+    record_generators = []
     for zone_id in zone_ids:
         # use paginator for each zone
         rec_iter = CONN.get_paginator('list_resource_record_sets').paginate(HostedZoneId=zone_id)
-        records += list(rec_iter.search("ResourceRecordSets[{}]".format(jmes_filter)))
-    return records
+        record_generators += rec_iter.search("ResourceRecordSets[{}]".format(jmes_filter))
+
+    # use generator comprehension to return a new generator from a list of generators :D
+    return (gen for gen in record_generators)
 
 def get_unused_records():
     '''returns all records currently unused by ec2 instances
@@ -84,53 +90,72 @@ def get_unused_records():
 
     return unused_records
 
-def create_record(name, value, record_type='A'):
-    '''create DNS record'''
+class ChangeRecords(object):
+    '''object used for creating change batches'''
 
-    zone_id = get_zones('.'.join(_normalize_dnsnames(name).split('.')[-3:]))[0]['Id']
+    def __init__(self):
+        self._change_dict = {}
 
-    CONN.change_resource_record_sets(
-        HostedZoneId=zone_id,
-        ChangeBatch={'Changes': [{
-            'Action': 'CREATE',
-            'ResourceRecordSet': {
+    def create(self, name, value, record_type, ttl=300):
+        '''add UPSERT(create or update) to change batch'''
+
+        zone_id = get_zone_id_from_fqdn(name)
+        self._update_change_dict(zone_id)
+        self._change_dict[zone_id]['changes'].append({
+            'Action': 'UPSERT', 'ResourceRecordSet': {
                 'Name': name,
                 'Type': record_type,
-                'TTL': 300,
+                'TTL': ttl,
                 'ResourceRecords': [{
                     'Value': value
                 }]
-            }
-        }]}
-    )
-    return True
+            }})
 
-def delete_records(names):
-    '''delete records'''
+    def delete(self, name):
+        '''add DELETE to change batch'''
 
-    records = _build_change_dict(names)
+        zone_id = get_zone_id_from_fqdn(name)
+        self._update_change_dict(zone_id)
+        self._change_dict[zone_id]['deletes'].append(name)
 
-    for domain in records.items():
-        changes = [{'Action': 'DELETE', 'ResourceRecordSet': rec} for rec in get_records(domain[1])]
-        CONN.change_resource_record_sets(
-            HostedZoneId=domain[0],
-            ChangeBatch={'Changes': changes})
-    return True
+    def commit(self, dry_run=False):
+        '''commit all changes'''
+        for zone in self._change_dict.items():
+            zone_id = zone[0]
+            changes = zone[1]['changes']
+            deletes = zone[1]['deletes']
 
-def _normalize_dnsnames(items):
-    ''' add . to DNS names '''
+            # check if deletes list has items
+            if deletes:
+                # add deletes to change batch
+                changes += [{'Action': 'DELETE', 'ResourceRecordSet': rec}
+                            for rec in get_records(deletes)]
+
+            # check if changes list has items
+            if changes:
+                # output changes
+                print json.dumps(changes, sort_keys=True, indent=2, separators=(',', ': '))
+                if not dry_run:
+                    batch_size = 50
+                    batches = [changes[i:i+batch_size] for i in range(0, len(changes), batch_size)]
+                    # process changes per zone in batches
+                    for batch in batches:
+                        CONN.change_resource_record_sets(HostedZoneId=zone_id,
+                                                         ChangeBatch={'Changes': batch})
+
+    def _update_change_dict(self, zone_id):
+        '''build dictionary of records using zone_id as the key'''
+        if not self._change_dict.has_key(zone_id):
+            self._change_dict[zone_id] = {'changes': [],
+                                          'deletes': []}
+
+    def __str__(self):
+        return json.dumps(self._change_dict, sort_keys=True, indent=2, separators=(',', ': '))
+
+def normalize_dnsnames(items):
+    ''' add . to DNS names. accepts strings and lists '''
     if isinstance(items, str):
         if items[-1] != '.':
             return '{}.'.format(items)
         return items
     return ['{}.'.format(item) if item[-1] != '.' else item for item in items]
-
-def _build_change_dict(names):
-    # build dictionary of records using zone_id as the key
-    records = {}
-    for name in utils.str_to_list(names):
-        zone_id = get_zones('.'.join(_normalize_dnsnames(name).split('.')[-3:]))[0]['Id']
-        if not records.has_key(zone_id):
-            records[zone_id] = []
-        records[zone_id].append(name)
-    return records

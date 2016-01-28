@@ -7,7 +7,7 @@ CONN = boto3.client('rds')
 def get_instances(ids=None, engines=None, classes=None):
     ''' Get RDS instances
 
-    Returns a list of RDS instances. Calling with no arguments returns all RDS instances.
+    Returns a generator of RDS instances. Calling with no arguments returns all RDS instances.
     Since boto3 does not provide a service resource or collection object for RDS,
     this function uses JMESPath queries for filtering.
 
@@ -17,7 +17,7 @@ def get_instances(ids=None, engines=None, classes=None):
         classes (Optional[list]): list of DB instance types
 
     Returns:
-        list: a list of DBInstance dictionaries
+        generator: a generator of DBInstance dictionaries
     '''
 
     # build JMESPath filter projection
@@ -30,12 +30,12 @@ def get_instances(ids=None, engines=None, classes=None):
         jmes_filter.add_filter('DBInstanceClass', classes)
 
     iterator = CONN.get_paginator('describe_db_instances').paginate()
-    return list(iterator.search('DBInstances[{}]'.format(jmes_filter)))
+    return iterator.search('DBInstances[{}]'.format(jmes_filter))
 
 def get_snapshots(instance_ids=None, snapshot_ids=None, snapshot_type=None):
     ''' Get rds snapshots
 
-    Returns a list of RDS snapshots. Calling with no arguments returns all RDS snapshots.
+    Returns a generator of RDS snapshots. Calling with no arguments returns all RDS snapshots.
     Since boto3 does not provide a service resource or collection object for RDS,
     this function uses JMESPath queries for filtering.
 
@@ -45,7 +45,7 @@ def get_snapshots(instance_ids=None, snapshot_ids=None, snapshot_type=None):
         snapshot_type (Optional[str]): type of snapshot (manual, automated). Defaults to None
 
     Returns:
-        list: a list of DBSnapshots
+        generator: a generator of DBSnapshots
     '''
 
     # build JMESPath query
@@ -61,7 +61,7 @@ def get_snapshots(instance_ids=None, snapshot_ids=None, snapshot_type=None):
         kwargs['SnapshotType'] = snapshot_type
 
     iterator = CONN.get_paginator('describe_db_snapshots').paginate(**kwargs)
-    return list(iterator.search('DBSnapshots[{}]'.format(jmes_filter)))
+    return iterator.search('DBSnapshots[{}]'.format(jmes_filter))
 
 #def resize_instances(instances, instance_type, force=False, dry_run=False):
 #def _valid_rds_instance_type(instance_type):
