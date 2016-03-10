@@ -1,7 +1,7 @@
 ''' Functions for interacting with AWS Route53 '''
 
 import json
-import urllib2
+import requests
 import boto3
 import ipaddress
 from aws import ec2, utils
@@ -57,8 +57,8 @@ def get_unused_records():
     running_ips += [i.public_ip_address for i in instances if i.public_ip_address]
 
     # create list of IPv4Network objects containing AWS cidr ranges
-    amazon_json = json.loads(urllib2.urlopen(
-        'https://ip-ranges.amazonaws.com/ip-ranges.json').read())['prefixes']
+    amazon_json = json.loads(
+        requests.get('https://ip-ranges.amazonaws.com/ip-ranges.json').text)['prefixes']
     networks = ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16']
     networks += [net['ip_prefix'] for net in amazon_json]
     ranges = [ipaddress.ip_network(net.decode()) for net in networks]
