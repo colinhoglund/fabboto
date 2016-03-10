@@ -2,7 +2,7 @@
 
 import boto3
 from botocore.exceptions import ClientError
-from aws import exceptions, utils
+from aws import utils
 
 CONN = boto3.resource('ec2')
 
@@ -50,6 +50,30 @@ def get_snapshots(owner_id, snapshot_ids=None, volume_ids=None, status=None, tag
     #return a collection of ec2 snapshots
     return CONN.snapshots.filter(**kwargs)
 
+def get_amis(owner_ids, image_ids=None, tags=None, state=None, filters=None):
+    ''' get AMIs based on filters '''
+
+    # apply filters based on arguments
+    filter_list = []
+    if state:
+        filter_list.append({'Name': 'state', 'Values': utils.str_to_list(state)})
+    if tags:
+        utils.add_tag_filters(tags, filter_list)
+    if filters:
+        utils.add_filters(filters, filter_list)
+
+    # build collection filter arguments
+    kwargs = {}
+    if filter_list:
+        kwargs['Filters'] = filter_list
+    if image_ids:
+        kwargs['ImageIds'] = utils.str_to_list(image_ids)
+    if owner_ids:
+        kwargs['Owners'] = utils.str_to_list(owner_ids)
+
+    #return a collection of ec2 instances
+    return CONN.images.filter(**kwargs)
+
 def resize_instances(instances, instance_type, force=False, dry_run=False):
     ''' Resize instances in ec2.instancesCollection
 
@@ -60,11 +84,8 @@ def resize_instances(instances, instance_type, force=False, dry_run=False):
     running_ids = []
     skipped_ids = []
 
-    # return False if instance type is not valid
-    if not _valid_ec2_instance_type(instance_type):
-        raise exceptions.InvalidInstanceType(
-            '{} is not a valid instance type.'.format(instance_type)
-        )
+    # raises ClientError if instance type is not valid
+    _validate_ec2_instance_type(instance_type)
 
     for instance in instances:
         # drop instances from collection that are already the specified instance_type
@@ -121,12 +142,11 @@ def resize_instances(instances, instance_type, force=False, dry_run=False):
         for instance in skipped_instances:
             print '{} skipped due to {} state'.format(instance.instance_id, instance.state['Name'])
 
-def _valid_ec2_instance_type(instance_type):
-    ''' verify that instance_type is valid '''
+def _validate_ec2_instance_type(instance_type):
+    ''' verify that instance_type is valid. Invalid types raise a ClientError '''
     try:
         CONN.create_instances(DryRun=True, ImageId='ami-d05e75b8',
                               MinCount=1, MaxCount=1, InstanceType=instance_type)
     except ClientError as ex:
         if 'InvalidParameterValue' in ex.message:
-            return False
-        return True
+            raise ex
