@@ -62,6 +62,3 @@ def get_snapshots(instance_ids=None, snapshot_ids=None, snapshot_type=None):
 
     iterator = CONN.get_paginator('describe_db_snapshots').paginate(**kwargs)
     return iterator.search('DBSnapshots[{}]'.format(jmes_filter))
-
-#def resize_instances(instances, instance_type, force=False, dry_run=False):
-#def _valid_rds_instance_type(instance_type):
