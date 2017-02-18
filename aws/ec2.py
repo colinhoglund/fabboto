@@ -1,152 +1,126 @@
-''' Functions for interacting with EC2 '''
+''' Tools for interacting with EC2 '''
 
-import boto3
 from botocore.exceptions import ClientError
-from aws import utils
+from operator import attrgetter
+from . import utils
 
-CONN = boto3.resource('ec2')
 
-def get_instances(ids=None, state=None, tags=None, filters=None):
-    ''' Get ec2 instances based on filters. '''
+class Instances(utils.CollectionBase):
+    ''' Get EC2 instances'''
 
-    # apply filters based on arguments
-    filter_list = []
-    if state:
-        filter_list.append({'Name': 'instance-state-name', 'Values': utils.str_to_list(state)})
-    if tags:
-        utils.add_tag_filters(tags, filter_list)
-    if filters:
-        utils.add_filters(filters, filter_list)
+    CONNECTION_TYPE = 'resource'
+    SERVICE = 'ec2'
 
-    # build collection filter arguments
-    kwargs = {}
-    if filter_list:
-        kwargs['Filters'] = filter_list
-    if ids:
-        kwargs['InstanceIds'] = utils.str_to_list(ids)
+    def __init__(self, ids=None, state=None, tags=None, filters=None):
+        ''' Filter instances based on kwargs '''
+        self._kwargs = {}
+        self._collection_filter = utils.CollectionFilter()
+        if state:
+            self._collection_filter.append('instance-state-name', state)
+        if tags:
+            self._collection_filter.append_dict(tags, tags=True)
+        if filters:
+            self._collection_filter.append_dict(filters)
+        if self._collection_filter.filters:
+            self._kwargs['Filters'] = self._collection_filter.filters
+        if ids:
+            self._kwargs['InstanceIds'] = utils.str_to_list(ids)
 
-    #return a collection of ec2 instances
-    return CONN.instances.filter(**kwargs)
+    def _all(self):
+        ''' Return a collection of EC2 instances '''
+        return self.get_connection().instances.filter(**self._kwargs)
 
-def get_snapshots(owner_id, snapshot_ids=None, volume_ids=None, status=None, tags=None):
-    ''' Get ec2 snapshots based on filters '''
 
-    # apply filters based on arguments
-    filter_list = []
-    filter_list.append({'Name': 'owner-id', 'Values': utils.str_to_list(owner_id)})
-    if volume_ids:
-        filter_list.append({'Name': 'volume-id', 'Values': utils.str_to_list(volume_ids)})
-    if status:
-        filter_list.append({'Name': 'status', 'Values': utils.str_to_list(status)})
-    if tags:
-        utils.add_tag_filters(tags, filter_list)
+class Snapshots(utils.CollectionBase):
+    ''' Get EC2 snapshots '''
 
-    kwargs = {}
-    if filter_list:
-        kwargs['Filters'] = filter_list
-    if snapshot_ids:
-        kwargs['SnapshotIds'] = utils.str_to_list(snapshot_ids)
+    CONNECTION_TYPE = 'resource'
+    SERVICE = 'ec2'
 
-    #return a collection of ec2 snapshots
-    return CONN.snapshots.filter(**kwargs)
+    def __init__(self, owner_ids=utils.get_account_id(), snapshot_ids=None,
+                 volume_ids=None, status=None, tags=None):
+        ''' Filter snapshots based on kwargs '''
+        self._kwargs = {}
+        self._collection_filter = utils.CollectionFilter()
+        self._collection_filter.append('owner-id', owner_ids)
+        if volume_ids:
+            self._collection_filter.append('volume-id', volume_ids)
+        if status:
+            self._collection_filter.append('status', status)
+        if tags:
+            self._collection_filter.append_dict(tags, tags=True)
+        if snapshot_ids:
+            self._kwargs['SnapshotIds'] = utils.str_to_list(snapshot_ids)
+        self._kwargs['Filters'] = self._collection_filter.filters
 
-def get_amis(owner_ids, image_ids=None, tags=None, state=None, filters=None):
-    ''' get AMIs based on filters '''
+    def _all(self):
+        ''' Return a collection of ec2 snapshots '''
+        return self.get_connection().snapshots.filter(**self._kwargs)
 
-    # apply filters based on arguments
-    filter_list = []
-    if state:
-        filter_list.append({'Name': 'state', 'Values': utils.str_to_list(state)})
-    if tags:
-        utils.add_tag_filters(tags, filter_list)
-    if filters:
-        utils.add_filters(filters, filter_list)
+    def latest(self):
+        ''' Return the most recent snapshot in the collection '''
+        return sorted(self._all(), key=attrgetter('start_time'))[-1]
 
-    # build collection filter arguments
-    kwargs = {}
-    if filter_list:
-        kwargs['Filters'] = filter_list
-    if image_ids:
-        kwargs['ImageIds'] = utils.str_to_list(image_ids)
-    if owner_ids:
-        kwargs['Owners'] = utils.str_to_list(owner_ids)
 
-    #return a collection of ec2 instances
-    return CONN.images.filter(**kwargs)
+class Images(utils.CollectionBase):
+    ''' Get AMIs '''
 
-def resize_instances(instances, instance_type, force=False, dry_run=False):
-    ''' Resize instances in ec2.instancesCollection
+    CONNECTION_TYPE = 'resource'
+    SERVICE = 'ec2'
 
-        WARNING: Use 'force=True' with caution, it potentially scripts at outage!
-    '''
-    # create a list of instance ids to allow removal of instances from collection
-    instance_ids = [i.instance_id for i in list(instances)]
-    running_ids = []
-    skipped_ids = []
+    def __init__(self, owner_ids=utils.get_account_id(), image_ids=None,
+                 tags=None, state=None, filters=None):
+        ''' Filter AMIs based on kwargs '''
+        self._kwargs = {}
+        self._collection_filter = utils.CollectionFilter()
+        if state:
+            self._collection_filter.append('state', state)
+        if tags:
+            self._collection_filter.append_dict(tags, tags=True)
+        if filters:
+            self._collection_filter.append_dict(filters)
+        if self._collection_filter.filters:
+            self._kwargs['Filters'] = self._collection_filter.filters
+        if image_ids:
+            self._kwargs['ImageIds'] = utils.str_to_list(image_ids)
+        if owner_ids:
+            self._kwargs['Owners'] = utils.str_to_list(owner_ids)
 
-    # raises ClientError if instance type is not valid
-    _validate_ec2_instance_type(instance_type)
+    def _all(self):
+        ''' Return a collection of AMIs '''
+        return self.get_connection().images.filter(**self._kwargs)
 
-    for instance in instances:
-        # drop instances from collection that are already the specified instance_type
-        if instance.instance_type == instance_type:
-            instance_ids.remove(instance.instance_id)
-        elif instance.state['Name'] != 'stopped':
-            # move running instances to running_ids
-            if force and instance.state['Name'] == 'running':
-                running_ids.append(instance.instance_id)
-            # move all other instances to skipped_ids
-            else:
-                skipped_ids.append(instance.instance_id)
-            # remove from instance_ids
-            instance_ids.remove(instance.instance_id)
 
-    # modify stopped instances
-    if len(instance_ids) > 0:
-        stopped_instances = instances.filter(InstanceIds=instance_ids)
-        if dry_run:
-            print 'DRYRUN: stopped instances to modify: {}'.format(instance_ids)
-        else:
-            for instance in stopped_instances:
-                instance.modify_attribute(Attribute='instanceType', Value=instance_type)
+class ElasticLoadBalancers(utils.CollectionBase):
+    ''' Get ELBs '''
 
-    # modify running instances with force
-    if force and len(running_ids) > 0:
-        running_instances = instances.filter(InstanceIds=running_ids)
-        if dry_run:
-            print 'DRYRUN: running instances to modify: {}'.format(running_ids)
-        else:
-            # create list of pending changes
-            pending_ids = [i.instance_id for i in list(running_instances)]
+    CONNECTION_TYPE = 'client'
+    SERVICE = 'elb'
 
-            # stop running instances (fingers crossed...)
-            running_instances.stop()
+    def __init__(self, names=None):
+        ''' Filter ELBs based on kwargs '''
+        self._kwargs = {}
+        if names:
+            self._kwargs['LoadBalancerNames'] = utils.str_to_list(names)
 
-            '''
-            repeatedly loop through instances until all pending_ids have been processed.
-            this allows instances to come up as they're ready, rather than waiting for
-            the previous item in running_instances
-            '''
-            while len(pending_ids) > 0:
-                for instance in running_instances:
-                    try:
-                        instance.modify_attribute(Attribute='instanceType', Value=instance_type)
-                        instance.start()
-                        pending_ids.remove(instance.instance_id)
-                    except ClientError:
-                        continue
+    def _all(self):
+        ''' Return a generator that yields ELB dictionaries '''
+        return self.get_connection().get_paginator(
+            'describe_load_balancers').paginate(**self._kwargs).search(
+                'LoadBalancerDescriptions[]')
 
-    # print out skipped instances
-    if len(skipped_ids) > 0:
-        skipped_instances = instances.filter(InstanceIds=skipped_ids)
-        for instance in skipped_instances:
-            print '{} skipped due to {} state'.format(instance.instance_id, instance.state['Name'])
 
-def _validate_ec2_instance_type(instance_type):
-    ''' verify that instance_type is valid. Invalid types raise a ClientError '''
+def valid_instance_type(instance_type):
+    ''' Verify that instance_type is valid.
+        Invalid types raise a ClientError '''
     try:
-        CONN.create_instances(DryRun=True, ImageId='ami-d05e75b8',
-                              MinCount=1, MaxCount=1, InstanceType=instance_type)
-    except ClientError as ex:
-        if 'InvalidParameterValue' in ex.message:
-            raise ex
+        utils.get_connection('resource', 'ec2').create_instances(
+            DryRun=True, ImageId='ami-d05e75b8',
+            MinCount=1, MaxCount=1, InstanceType=instance_type
+        )
+    except ClientError as e:
+        if 'would have succeeded' in e.message:
+            return True
+        if 'InvalidParameterValue' in e.message:
+            return False
+        raise e

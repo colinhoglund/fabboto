@@ -1,97 +1,60 @@
-''' Functions for interacting with AWS Route53 '''
+''' Tools for interacting with AWS Route53 '''
 
 import json
-import requests
-import boto3
-import ipaddress
-from aws import ec2, utils
+from . import utils
 
-CONN = boto3.client('route53')
 
-def get_zones(domains=None):
-    '''return hosted zones generator'''
+class Zones(utils.CollectionBase):
+    ''' Get Hosted Zones '''
 
-    # build JMESPath filter projection
-    jmes_filter = utils.FilterProjection()
-    if domains:
-        jmes_filter.add_aggregate('Name', normalize_dnsnames(domains))
+    CONNECTION_TYPE = 'client'
+    SERVICE = 'route53'
 
-    # use zone paginator to gather all zones
-    zone_iter = CONN.get_paginator('list_hosted_zones').paginate()
-    return zone_iter.search("HostedZones[{}]".format(jmes_filter))
+    def __init__(self, domains=None):
+        ''' Filter zones based on kwargs '''
+        self._jmes_filter = utils.ProjectionFilter()
+        if domains:
+            self._jmes_filter.add_aggregate('Name',
+                                            normalize_dnsnames(domains))
 
-def get_zone_id_from_fqdn(fqdn):
-    '''strip domain and get hosted zone id'''
-    return get_zones('.'.join(normalize_dnsnames(fqdn).split('.')[-3:])).next()['Id']
+    def _all(self):
+        ''' Return a generator that yields hosted zone dictionaries '''
+        return self.get_connection().get_paginator(
+            'list_hosted_zones').paginate().search(
+                "HostedZones[{}]".format(self._jmes_filter))
 
-def get_records(names=None, domains=None, types=None):
-    '''return records generator'''
 
-    # build JMESPath filter projection
-    jmes_filter = utils.FilterProjection()
-    if names:
-        jmes_filter.add_aggregate('Name', normalize_dnsnames(names))
-    if types:
-        jmes_filter.add_filter('Type', types)
+class Records(utils.CollectionBase):
+    ''' Get DNS Records '''
 
-    # get a list of zone ids based on value of domains
-    zone_ids = [zone['Id'] for zone in get_zones(domains)]
+    CONNECTION_TYPE = 'client'
+    SERVICE = 'route53'
 
-    # loop through zone_ids to gather records
-    record_generators = []
-    for zone_id in zone_ids:
-        # use paginator for each zone
-        rec_iter = CONN.get_paginator('list_resource_record_sets').paginate(HostedZoneId=zone_id)
-        record_generators += rec_iter.search("ResourceRecordSets[{}]".format(jmes_filter))
+    def __init__(self, names=None, domains=None, types=None):
+        ''' Filter DNS records based on kwargs '''
+        self._domains = domains
+        self._jmes_filter = utils.ProjectionFilter()
+        if names:
+            self._jmes_filter.add_aggregate('Name', normalize_dnsnames(names))
+        if types:
+            self._jmes_filter.add_filter('Type', types)
 
-    # use generator comprehension to return a new generator from a list of generators :D
-    return (gen for gen in record_generators)
+    def _all(self):
+        ''' Generator function that yields DNS records '''
+        for zone in Zones(self._domains):
+            records = self.get_connection().get_paginator(
+                'list_resource_record_sets'
+            ).paginate(
+                HostedZoneId=zone['Id']
+            ).search(
+                "ResourceRecordSets[{}]".format(self._jmes_filter)
+            )
+            for record in records:
+                yield record
 
-def get_unused_records():
-    '''returns all records currently unused by ec2 instances
-     this currently does not handle alias->alias records'''
-
-    # create list of all existing EC2 IPs stopped instances don't have IP addresses
-    instances = ec2.get_instances(state='running')
-    running_ips = [i.private_ip_address for i in instances]
-    running_ips += [i.public_ip_address for i in instances if i.public_ip_address]
-
-    # create list of IPv4Network objects containing AWS cidr ranges
-    amazon_json = json.loads(
-        requests.get('https://ip-ranges.amazonaws.com/ip-ranges.json').text)['prefixes']
-    networks = ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16']
-    networks += [net['ip_prefix'] for net in amazon_json]
-    ranges = [ipaddress.ip_network(net.decode()) for net in networks]
-
-    # add 'A' records with unused IP addresses to unused_records
-    # add alias records to new list to be traversed next
-    unused_records = []
-    alias_records = []
-    for record in get_records():
-        if record['Type'] == 'A' and record.has_key('ResourceRecords'):
-            ip_addr = record['ResourceRecords'][0]['Value']
-
-            # only add to unused_records if IP is not used by a
-            # running instance and IP is in an AWS address range
-            if (ip_addr not in running_ips
-                    and True in [ipaddress.ip_address(ip_addr.decode()) in net for net in ranges]):
-                unused_records.append(record)
-        elif record['Type'] == 'CNAME' or record.has_key('AliasTarget'):
-            alias_records.append(record)
-
-    # search for alias records that point at unused A records
-    unused_names = [rec['Name'] for rec in unused_records]
-    for record in alias_records:
-        if (record.has_key('ResourceRecords')
-                and record['ResourceRecords'][0]['Value'] in unused_names):
-            unused_records.append(record)
-        elif record.has_key('AliasTarget') and record['AliasTarget']['DNSName'] in unused_names:
-            unused_records.append(record)
-
-    return unused_records
 
 class ChangeRecords(object):
-    '''object used for creating change batches'''
+    ''' Object for creating change batches to modify Route53 configuration '''
 
     def __init__(self):
         self._change_dict = {}
@@ -129,32 +92,43 @@ class ChangeRecords(object):
             if deletes:
                 # add deletes to change batch
                 changes += [{'Action': 'DELETE', 'ResourceRecordSet': rec}
-                            for rec in get_records(deletes)]
+                            for rec in Records(deletes)]
 
             # check if changes list has items
             if changes:
                 # output changes
-                print json.dumps(changes, sort_keys=True, indent=2, separators=(',', ': '))
+                print json.dumps(changes, sort_keys=True,
+                                 indent=2, separators=(',', ': '))
                 if not dry_run:
-                    batch_size = 50
-                    batches = [changes[i:i+batch_size] for i in range(0, len(changes), batch_size)]
-                    # process changes per zone in batches
-                    for batch in batches:
-                        CONN.change_resource_record_sets(HostedZoneId=zone_id,
-                                                         ChangeBatch={'Changes': batch})
+                    # process changes per zone in batches of 50
+                    for batch in utils.grouper(changes, 50):
+                        utils.get_connection('client', 'route53').change_resource_record_sets(
+                            HostedZoneId=zone_id,
+                            # use filter to strip NoneType items from batches
+                            ChangeBatch={'Changes': filter(None, batch)}
+                        )
 
     def _update_change_dict(self, zone_id):
-        '''build dictionary of records using zone_id as the key'''
-        if not self._change_dict.has_key(zone_id):
+        '''Build dictionary of records using zone_id as the key'''
+        if zone_id not in self._change_dict:
             self._change_dict[zone_id] = {'changes': [],
                                           'deletes': []}
 
     def __str__(self):
-        return json.dumps(self._change_dict, sort_keys=True, indent=2, separators=(',', ': '))
+        return json.dumps(self._change_dict, sort_keys=True,
+                          indent=2, separators=(',', ': '))
+
+
+def get_zone_id_from_fqdn(fqdn):
+    ''' Strip domain and get hosted zone id '''
+    return list(Zones(
+        '.'.join(normalize_dnsnames(fqdn).split('.')[-3:])
+    ))[0]['Id']
+
 
 def normalize_dnsnames(items):
-    ''' add . to DNS names. accepts strings and lists '''
-    if isinstance(items, str):
+    ''' Add . to DNS names. accepts strings and lists '''
+    if isinstance(items, (str, unicode)):
         if items[-1] != '.':
             return '{}.'.format(items)
         return items

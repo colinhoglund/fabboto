@@ -1,7 +1,24 @@
 ''' Utilities for AWS library '''
 
-class FilterProjection(object):
-    ''' Create JMESPath filter projections '''
+import boto3
+from itertools import izip_longest
+
+
+class CollectionBase(object):
+    ''' Mixin class for AWS service classes '''
+    def __iter__(self):
+        ''' Generic generator function that yields
+            AWS resources using _all() method '''
+        for i in self._all():
+            yield i
+
+    def get_connection(self):
+        ''' Return an AWS connection object '''
+        return get_connection(self.CONNECTION_TYPE, self.SERVICE)
+
+
+class ProjectionFilter(object):
+    ''' JMESPath projection based filtering '''
 
     def __init__(self):
         self._aggregates = {}
@@ -9,15 +26,11 @@ class FilterProjection(object):
 
     def add_aggregate(self, key, values):
         ''' add aggregates to JMESPath filter projection '''
-        # accept str or list
-        values = str_to_list(values)
-        self._aggregates[key] = values
+        self._aggregates[key] = str_to_list(values)
 
     def add_filter(self, key, values):
         ''' add filters to JMESPath filter projection '''
-        # accept str or list
-        values = str_to_list(values)
-        self._filters[key] = values
+        self._filters[key] = str_to_list(values)
 
     def __str__(self):
         ''' Output the JMESPath filter projection as a string '''
@@ -47,18 +60,50 @@ class FilterProjection(object):
 
         return query
 
-def add_filters(filters, filter_list):
-    ''' Translates dictionary object into an collection filter '''
-    for item in filters.iteritems():
-        filter_list.append({'Name': '{}'.format(item[0]), 'Values': [item[1]]})
 
-def add_tag_filters(tags, filter_list):
-    ''' Translates dictionary object of tags into an collection filter '''
-    for tag in tags.iteritems():
-        filter_list.append({'Name': 'tag:{}'.format(tag[0]), 'Values': [tag[1]]})
+class CollectionFilter(object):
+    ''' AWS resource filtering '''
+
+    def __init__(self):
+        self.filters = []
+
+    def append(self, key, values):
+        self.filters.append({'Name': key, 'Values': str_to_list(values)})
+
+    def append_dict(self, dictionary, tags=False):
+        ''' Translates dictionary into collection filters.
+
+            Set tags=True when passed in dictionary keys are tag keys
+            Example: append_dict({'environment': 'prod'}, tags=True)
+        '''
+        for key, val in dictionary.items():
+            if tags:
+                key = 'tag:{}'.format(key)
+            self.append(key, val)
+
+
+def get_connection(connection_type, service):
+    ''' Return an AWS connection object '''
+    if connection_type == 'resource':
+        return boto3.resource(service)
+    if connection_type == 'client':
+        return boto3.client(service)
+
+
+def get_account_id():
+    ''' Return the current user's AWS account ID '''
+    return boto3.client('sts').get_caller_identity()['Account']
+
 
 def str_to_list(obj):
-    ''' return string arg as a list '''
-    if isinstance(obj, str):
+    ''' Check if obj is str or unicode and return a list '''
+    if isinstance(obj, (str, unicode)):
         return obj.split()
     return obj
+
+
+def grouper(iterable, n, fillvalue=None):
+    "Collect data into fixed-length chunks or blocks"
+    # grouper('ABCDEFG', 3, 'x') --> ABC DEF Gxx"
+    args = [iter(iterable)] * n
+    return izip_longest(*args, fillvalue=fillvalue)
